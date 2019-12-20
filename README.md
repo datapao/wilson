@@ -1,6 +1,7 @@
 # Six Sigma rules for PySpark DataFrames
 
 Six sigma rule generator is a pyspark tool to generate six sigma rules for columns.
+
 Background: https://www.isixsigma.com/tools-templates/control-charts/a-guide-to-control-charts/
 
 The rule generator expects the target DataFrame to have a `timestamp` column.
@@ -16,7 +17,7 @@ The rule generator expects the target DataFrame to have a `timestamp` column.
 pip install -e .
 ```
 
-### For DataBricks installation:
+### For Databricks installation:
 
 #### 1. Clone or download repository
 
