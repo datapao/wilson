@@ -1,0 +1,1 @@
+from ruler.generator import RuleGenerator

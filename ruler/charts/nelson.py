@@ -1,8 +1,3 @@
-from datetime.datetime import strptime
-
-from pyspark import SparkContext
-from pyspark.sql import SparkSession
-
 import pyspark.sql.functions as func
 from pyspark.sql.functions import col, lit
 from pyspark.sql.window import Window
@@ -19,14 +14,14 @@ class NelsonRules:
     def __init__(self, timecol='timestamp'):
         self.timecol = timecol
         self.rules = {
-            'rule1': self.rule1,
-            'rule2': self.rule2,
-            'rule3': self.rule3,
-            'rule4': self.rule4,
-            'rule5': self.rule5,
-            'rule6': self.rule6,
-            'nelson4': self.nelson4,
-            'nelson7': self.nelson7,
+            'nelson_1': self.rule1,
+            'nelson_2': self.rule2,
+            'nelson_3': self.rule3,
+            'nelson_4': self.rule4,
+            'nelson_5': self.rule5,
+            'nelson_6': self.rule6,
+            'nelson_7': self.rule7,
+            'nelson_8': self.rule8,
         }
 
     def apply(self, df, colnames):
@@ -40,7 +35,7 @@ class NelsonRules:
                   .withColumn('{}_std'.format(colname), lit(std)))
 
             for rulename, rule in self.rules.items():
-                df = df.withColumn('{}_{}'.format(colname, rulename), rule(colname))
+                df = df.withColumn(f'{colname}_{rulename}', rule(colname))
 
         return df
 
@@ -127,6 +122,28 @@ class NelsonRules:
         return increasing | decreasing
 
     def rule4(self, colname):
+        """Nelson rule 4
+        14 (or more) points in a row alternate in direction,
+        increasing then decreasing
+        (bimodal, 2 or more factors in data set)
+        """
+        column = col(colname)
+        window = self.generate_window(self.timecol)
+        overall_window = self.generate_window(self.timecol, (-14, 0))
+
+        increasing = column > func.lag(column, 1).over(window)
+        decreasing = column < func.lag(column, 1).over(window)
+
+        xor = ((increasing & ~decreasing) | (~increasing & decreasing))
+        zig = increasing & func.lag(decreasing, 1).over(window)
+        zag = decreasing & func.lag(increasing, 1).over(window)
+
+        zigzag_count = (xor & (zig | zag)).astype('int')
+        zigzag = func.sum(zigzag_count).over(overall_window) >= 14
+
+        return zigzag
+
+    def rule5(self, colname):
         """Nelson rule 5
         2 (or 3) out of 3 points in a row are more than 2 standard deviations
         from the mean in the same direction.
@@ -142,7 +159,7 @@ class NelsonRules:
 
         return two_above | two_below
 
-    def rule5(self, colname):
+    def rule6(self, colname):
         """Nelson rule 6
         4 or 5 out of 5 points in a row are more than 1 standard deviation
         from the mean in the same direction.
@@ -158,7 +175,22 @@ class NelsonRules:
 
         return four_above | four_below
 
-    def rule6(self, colname):
+    def rule7(self, colname):
+        """Nelson rule 7
+        Fifteen points in a row are all within 1 standard deviation
+        of the mean on either side of the mean
+        (reduced variation or measurement issue)
+        """
+        column = col(colname)
+        window = self.generate_window(self.timecol, (-15, 0))
+        lower, upper = self.get_control_range(colname)
+
+        between = (column.between(lower, upper)).astype('int')
+        all_in_std = func.sum(between).over(window) >=15
+
+        return all_in_std
+
+    def rule8(self, colname):
         """Nelson rule 8
         8 points in a row exist, but none within 1 standard deviation
         of the mean, and the points are in both directions from the mean.
@@ -174,81 +206,3 @@ class NelsonRules:
         above = self.over(column, upper, window) >= 1
 
         return none_in_std & above & below
-
-    def nelson4(self, colname):
-      """Nelson rule 4
-      14 (or more) points in a row alternate in direction,
-      increasing then decreasing
-      (bimodal, 2 or more factors in data set)
-      """
-      column = col(colname)
-      window = self.generate_window(self.timecol)
-      overall_window = window = self.generate_window(self.timecol, (-14, 0))
-
-      increasing = column > func.lag(column, 1).over(window)
-      decreasing = column < func.lag(column, 1).over(window)
-
-      xor = ((increasing & ~decreasing) | (~increasing & decreasing))
-      zig = increasing & func.lag(decreasing, 1).over(window)
-      zag = decreasing & func.lag(increasing, 1).over(window)
-
-      zigzag_count = (xor & (zig | zag)).astype('int')
-      zigzag = func.sum(zigzag_count).over(overall_window) >= 14
-
-      return zigzag
-
-    def nelson7(self, colname):
-      """Nelson rule 7
-      Fifteen points in a row are all within 1 standard deviation
-      of the mean on either side of the mean
-      (reduced variation or measurement issue)
-      """
-      column = col(colname)
-      window = self.generate_window(self.timecol, (-15, 0))
-      lower, upper = self.get_control_range(colname)
-
-      between = (column.between(lower, upper)).astype('int')
-      all_in_std = func.sum(between).over(window) >=15
-
-      return all_in_std
-
-
-if __name__ == '__main__':
-    sc = SparkContext(master='local[4]', appName='NelsonRules')
-    spark = SparkSession(sc)
-
-    df = spark.createDataFrame(
-        data=[
-            ('01', strptime('2019-01-01', '%Y-%m-%d'), 1., 11.),
-            ('02', strptime('2019-01-02', '%Y-%m-%d'), 2., 10.),
-            ('03', strptime('2019-01-03', '%Y-%m-%d'), 3., 9.),
-            ('04', strptime('2019-01-04', '%Y-%m-%d'), 4., 8.),
-            ('05', strptime('2019-01-05', '%Y-%m-%d'), 5., 7.),
-            ('06', strptime('2019-01-06', '%Y-%m-%d'), 6., 6.),
-            ('07', strptime('2019-01-07', '%Y-%m-%d'), 7., 5.),
-            ('08', strptime('2019-01-08', '%Y-%m-%d'), 8., 6.),
-            ('09', strptime('2019-01-09', '%Y-%m-%d'), 9., 7.),
-            ('10', strptime('2019-01-10', '%Y-%m-%d'), 10., 8.),
-            ('11', strptime('2019-01-11', '%Y-%m-%d'), 9., 9.),
-            ('12', strptime('2019-01-12', '%Y-%m-%d'), 8., 10.),
-            ('13', strptime('2019-01-13', '%Y-%m-%d'), 7., 11.),
-            ('14', strptime('2019-01-14', '%Y-%m-%d'), 6., 10.),
-            ('15', strptime('2019-01-15', '%Y-%m-%d'), 5., 9.),
-            ('16', strptime('2019-01-16', '%Y-%m-%d'), 4., 8.),
-            ('17', strptime('2019-01-17', '%Y-%m-%d'), 3., 7.),
-            ('18', strptime('2019-01-18', '%Y-%m-%d'), 2., 6.),
-            ('19', strptime('2019-01-19', '%Y-%m-%d'), 1., 5.),
-            ('20', strptime('2019-01-20', '%Y-%m-%d'), 21., 1.),
-            ('21', strptime('2019-01-21', '%Y-%m-%d'), -21., 1.),
-            ('22', strptime('2019-01-22', '%Y-%m-%d'), 12., 1.),
-            ('23', strptime('2019-01-23', '%Y-%m-%d'), -12., 1.),
-            ('24', strptime('2019-01-24', '%Y-%m-%d'), 11., 9.),
-            ('25', strptime('2019-01-25', '%Y-%m-%d'), -11., 10.),
-        ],
-        schema='id string, timestamp timestamp, val1 float, val2 float'
-    )
-
-    rules = NelsonRules()
-    annotated = rules.apply(df, ['val1', 'val2'])
-
-    print(annotated.toPandas())
