@@ -14,6 +14,7 @@ setuptools.setup(
     description="Six sigma rule generator on Spark DataFrames",
     long_description=long_description,
     long_description_content_type="text/markdown",
+    download_url="https://github.com/datapao/nelson/archive/v0.0.1.zip",
     url="https://github.com/datapao/nelson",
     packages=setuptools.find_packages(),
     license='Apache License 2.0',
