@@ -7,15 +7,15 @@ with open("requirements.txt", 'r') as reqfile:
     requirements = reqfile.readlines()
 
 setuptools.setup(
-    name="nelson",
+    name="wilson",
     version="0.0.1",
     author="datapao",
     author_email="andras.fulop@datapao.com",
     description="Six sigma rule generator on Spark DataFrames",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    download_url="https://github.com/datapao/nelson/archive/v0.0.1.zip",
-    url="https://github.com/datapao/nelson",
+    download_url="https://github.com/datapao/wilson/archive/v0.0.1.zip",
+    url="https://github.com/datapao/wilson",
     packages=setuptools.find_packages(),
     license='Apache License 2.0',
     classifiers=[
