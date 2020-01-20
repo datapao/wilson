@@ -1,11 +1,11 @@
-from ruler.charts import NelsonRules
+from wilson.charts import NelsonRules
 
 
-class RuleGenerator:
+class SixSigma:
 
     @staticmethod
     def apply(df, cols, timecol='timestamp'):
-        rule_mapping = Ruler.generate_rule_mapping(df, cols)
+        rule_mapping = SixSigma.generate_rule_mapping(df, cols)
         for Rule, columns in rule_mapping.items():
             df = Rule(timecol=timecol).apply(df, columns)
         return df
@@ -14,7 +14,7 @@ class RuleGenerator:
     def generate_rule_mapping(df, candidate_cols):
         mapping = {}
         for col in candidate_cols:
-            Rule = Ruler.determine(df, col)
+            Rule = SixSigma.determine(df, col)
             mapping.setdefault(Rule, []).append(col)
         return mapping
 

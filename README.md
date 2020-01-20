@@ -36,12 +36,12 @@ python setup.py bdist
 ## Usage
 
 ```python
-from ruler import RuleGenerator
+from wilson import SixSigma
 
 df = spark.read.csv('example.csv')
 
-rule_generator = RuleGenerator(timecol='timestamp')
-df = rule_generator.apply(df, ['target_column_1'])
+sixsigma = SixSigma(timecol='timestamp')
+df = sixsigma.apply(df, ['target_column_1'])
 
 df.show()
 ```

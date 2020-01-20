@@ -2,6 +2,8 @@ import pyspark.sql.functions as func
 from pyspark.sql.functions import col, lit
 from pyspark.sql.window import Window
 
+import wilson.charts.utils as utils
+
 
 class NelsonRules:
     """Nelson rules for six sigma analysis.
@@ -29,7 +31,7 @@ class NelsonRules:
             colnames = [colnames]
 
         for colname in colnames:
-            mean, std = self.compute_stats(df, colname)
+            mean, std = utils.compute_stats(df, colname)
             df = (df
                   .withColumn('{}_mean'.format(colname), lit(mean))
                   .withColumn('{}_std'.format(colname), lit(std)))
@@ -39,57 +41,12 @@ class NelsonRules:
 
         return df
 
-    def generate_window(self, order_col, rowrange=None, partitions=None):
-        window = Window().orderBy(order_col)
-
-        # for future reference: if we want to use partitions
-        # if partitions is not None:
-        #     window = window.partitionBy(partitions)
-
-        if rowrange is not None:
-            window = window.rowsBetween(*rowrange)
-
-        return window
-
-    @staticmethod
-    def over(column, value, window):
-        return func.sum((column > value).astype('int')).over(window)
-
-    @staticmethod
-    def under(column, value, window):
-        return func.sum((column < value).astype('int')).over(window)
-
-    @staticmethod
-    def get_control_range(colname, sigma=1):
-        """
-        Returns the lower and upper thresholds for a column (colname).
-        Thresholds are the standard deviations n times (sigma) from the mean.
-        """
-        mean = col('{}_mean'.format(colname))
-        std = col('{}_std'.format(colname))
-
-        lower, upper = mean - sigma * std, mean + sigma * std
-
-        return lower, upper
-
-    @staticmethod
-    def compute_stats(df, colname):
-        column = col(colname)
-        meancol = func.mean(column).alias('{}_mean'.format(colname))
-        stdcol = func.stddev(column).alias('{}_std'.format(colname))
-
-        results = df.select(meancol, stdcol).first()
-        mean = results['{}_mean'.format(colname)]
-        std = results['{}_std'.format(colname)]
-
-        return mean, std
-
     def rule1(self, colname):
         """Nelson rule 1
         control limit breach - 1 point is more than 3 stddev from mean
         """
         column = col(colname)
-        lower, upper = self.get_control_range(colname, 3)
+        lower, upper = utils.get_control_range(colname, 3)
 
         return ~column.between(lower, upper)
 
@@ -98,12 +55,12 @@ class NelsonRules:
         7 or more points are the same side of the mean (should be 9 points)
         """
         column = col(colname)
-        window = self.generate_window(self.timecol, (-6, 0))
+        window = utils.generate_window(self.timecol, (-6, 0))
 
         mean = col('{}_mean'.format(colname))
 
-        all_above = self.over(column, mean, window) == 7
-        all_below = self.under(column, mean, window) == 7
+        all_above = utils.over(column, mean, window) == 7
+        all_below = utils.under(column, mean, window) == 7
 
         return all_above | all_below
 
@@ -112,7 +69,7 @@ class NelsonRules:
         7 or more points are increasing / decreasing (should be 6 points)
         """
         column = col(colname)
-        window = self.generate_window(self.timecol)
+        window = utils.generate_window(self.timecol)
 
         increasing, decreasing = lit(True), lit(True)
         for i in range(1, 7):
@@ -128,8 +85,8 @@ class NelsonRules:
         (bimodal, 2 or more factors in data set)
         """
         column = col(colname)
-        window = self.generate_window(self.timecol)
-        overall_window = self.generate_window(self.timecol, (-14, 0))
+        window = utils.generate_window(self.timecol)
+        overall_window = utils.generate_window(self.timecol, (-14, 0))
 
         increasing = column > func.lag(column, 1).over(window)
         decreasing = column < func.lag(column, 1).over(window)
@@ -151,11 +108,11 @@ class NelsonRules:
         Note: actual implementation only checks for two points.
         """
         column = col(colname)
-        window = self.generate_window(self.timecol, (-2, 0))
-        lower, upper = self.get_control_range(colname, 2)
+        window = utils.generate_window(self.timecol, (-2, 0))
+        lower, upper = utils.get_control_range(colname, 2)
 
-        two_below = self.under(column, lower, window) >= 2
-        two_above = self.over(column, upper, window) >= 2
+        two_below = utils.under(column, lower, window) >= 2
+        two_above = utils.over(column, upper, window) >= 2
 
         return two_above | two_below
 
@@ -167,11 +124,11 @@ class NelsonRules:
         Note: actual implementation only checks for four points.
         """
         column = col(colname)
-        window = self.generate_window(self.timecol, (-4, 0))
-        lower, upper = self.get_control_range(colname)
+        window = utils.generate_window(self.timecol, (-4, 0))
+        lower, upper = utils.get_control_range(colname)
 
-        four_below = self.under(column, lower, window) >= 4
-        four_above = self.over(column, upper, window) >= 4
+        four_below = utils.under(column, lower, window) >= 4
+        four_above = utils.over(column, upper, window) >= 4
 
         return four_above | four_below
 
@@ -182,8 +139,8 @@ class NelsonRules:
         (reduced variation or measurement issue)
         """
         column = col(colname)
-        window = self.generate_window(self.timecol, (-15, 0))
-        lower, upper = self.get_control_range(colname)
+        window = utils.generate_window(self.timecol, (-15, 0))
+        lower, upper = utils.get_control_range(colname)
 
         between = (column.between(lower, upper)).astype('int')
         all_in_std = func.sum(between).over(window) >=15
@@ -196,13 +153,13 @@ class NelsonRules:
         of the mean, and the points are in both directions from the mean.
         """
         column = col(colname)
-        window = self.generate_window(self.timecol, (-8, 0))
-        lower, upper = self.get_control_range(colname)
+        window = utils.generate_window(self.timecol, (-8, 0))
+        lower, upper = utils.get_control_range(colname)
 
         not_between = (~column.between(lower, upper)).astype('int')
         none_in_std = func.sum(not_between).over(window) == 8
 
-        below = self.under(column, lower, window) >= 1
-        above = self.over(column, upper, window) >= 1
+        below = utils.under(column, lower, window) >= 1
+        above = utils.over(column, upper, window) >= 1
 
         return none_in_std & above & below
